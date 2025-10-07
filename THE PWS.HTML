@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE PAWAN WORLDS (3D Edition)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Include OrbitControls for camera manipulation (FIXED: Using classic JS version which relies on global THREE) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&family=Luckiest+Guy&display=swap');
+        
+        body {
+            background-color: #0f172a; /* Dark Blue/Navy Background */
+            color: #e5e5e5;
+            font-family: 'VT323', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top to make room for 3D canvas */
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .pws-title {
+            font-family: 'Luckiest Guy', cursive;
+            color: #00ffaa; /* Bright Cyan/Green */
+            text-shadow: 4px 4px 0 #005a3b; /* Dark Green Shadow */
+            font-size: clamp(2rem, 5vw, 3.5rem); 
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .pws-card {
+            background: #1e293b; 
+            border: 5px solid #00ffaa;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            padding: 1.5rem;
+            width: 95vw;
+            max-width: 650px;
+        }
+
+        #game-canvas-container {
+            width: 100%;
+            height: 400px;
+            margin-bottom: 20px;
+            border: 4px solid #00ffaa; 
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .btn-pws {
+            background-color: #005a3b; 
+            color: #00ffaa;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            box-shadow: 0 4px 0 #003321;
+            transition: all 0.1s;
+            font-size: 1.25rem;
+            line-height: 1.5;
+            cursor: pointer;
+        }
+
+        .btn-pws:hover:not(:disabled) {
+            background-color: #00734c;
+        }
+        
+        .btn-pws:active:not(:disabled) {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #003321;
+        }
+        
+        .modal-pws {
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+        
+        .modal-content-pws {
+            background: #0f172a;
+            border: 4px solid #00ffaa;
+            box-shadow: 0 0 20px rgba(0, 255, 170, 0.5);
+        }
+
+        /* Styling for the speed slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 10px;
+            background: #003321;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity .2s;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            background: #00ffaa;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 255, 170, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div id="pws-app" class="pws-card flex flex-col items-center">
+    <h1 class="pws-title text-center">THE PAWAN WORLDS (3D)</h1>
+    <h2 class="text-xl text-center text-cyan-400 mb-4">(BATTLE SNAKE SIMULATION)</h2>
+
+    <!-- Game Status / User Stats -->
+    <div id="stats-panel" class="w-full flex flex-wrap justify-around p-3 mb-4 border-y-2 border-gray-600 text-lg">
+        <p class="w-1/3 text-center">COINS: <span id="coin-count" class="text-yellow-400">0</span></p>
+        <p class="w-1/3 text-center">POWER: <span id="max-power-level" class="text-red-400">1</span></p>
+        <p class="w-1/3 text-center">SCORE: <span id="current-score" class="text-green-400">0</span></p>
+    </div>
+
+    <!-- 3D Canvas Container -->
+    <div id="game-canvas-container" class="mb-6">
+        <!-- Three.js renderer attaches canvas here -->
+    </div>
+
+    <!-- Main Menu & Controls -->
+    <div id="game-controls" class="w-full flex flex-col space-y-4">
+        <button id="btn-toggle-game" class="btn-pws bg-green-700 hover:bg-green-800">START GAME</button>
+        <button id="btn-customize" class="btn-pws bg-purple-700 hover:bg-purple-800">CUSTOMIZATION SHOP</button>
+        <p class="text-sm text-center text-gray-400 pt-2">Controls: Use **W/A/S/D or Arrows** to move. Use **Mouse** to orbit the camera.</p>
+    </div>
+</div>
+
+<!-- Customization Modal -->
+<div id="custom-modal" class="modal-pws fixed inset-0 hidden items-center justify-center p-4 z-50">
+    <div class="modal-content-pws p-6 rounded-lg w-full max-w-md">
+        <h3 class="text-3xl text-center pws-title mb-6">CUSTOMIZATION SHOP</h3>
+
+        <div class="space-y-6">
+            <!-- Speed Customization Section -->
+            <div class="border p-4 rounded-lg border-cyan-700">
+                <h4 class="text-xl text-cyan-400">SNAKE SPEED CONTROL</h4>
+                <p class="text-sm text-gray-400 mb-3">Adjust the delay between game steps (in milliseconds).</p>
+                <label class="block mb-2">Current Delay: <span id="speed-delay-value" class="text-yellow-400">100ms</span> (10 FPS)</label>
+                <input type="range" id="speed-slider" min="50" max="300" step="10" value="100">
+                <p class="text-xs text-right text-gray-500 mt-1">Lower is Faster</p>
+            </div>
+
+            <!-- Max Power Upgrade Section -->
+            <div class="border p-4 rounded-lg border-red-700">
+                <h4 class="text-xl text-red-400">MAX POWER LEVEL UPGRADE</h4>
+                <p class="text-sm text-gray-400 mb-2">Increases starting power (affects score multiplier).</p>
+                <p>Current Power: <span id="custom-mpl" class="text-red-400">1</span></p>
+                <p>Upgrade Cost: <span id="upgrade-cost" class="text-yellow-400">100</span> Coins</p>
+                <button id="btn-upgrade-power" class="btn-pws bg-red-700 hover:bg-red-800 w-full mt-2">UPGRADE POWER</button>
+            </div>
+        </div>
+
+        <button id="btn-close-custom" class="btn-pws w-full mt-6 bg-gray-600 hover:bg-gray-700">CLOSE SHOP & SAVE</button>
+    </div>
+</div>
+
+<!-- Game Over Modal -->
+<div id="game-over-modal" class="modal-pws fixed inset-0 hidden items-center justify-center p-4 z-50">
+    <div class="modal-content-pws p-6 rounded-lg text-center w-full max-w-sm">
+        <h3 class="text-4xl pws-title mb-4 text-red-500">GAME OVER!</h3>
+        <p class="text-xl text-gray-300" id="game-over-reason">You were defeated!</p>
+        <p class="text-2xl text-green-400 mt-4">FINAL SCORE: <span id="final-score">0</span></p>
+        <p class="text-2xl text-yellow-400 mb-6">COINS EARNED: <span id="coins-earned">0</span></p>
+        <button id="btn-game-over-menu" class="btn-pws bg-red-700 hover:bg-red-800">RESTART GAME</button>
+    </div>
+</div>
+
+
+<script>
+    // --- Configuration and Global Variables ---
+
+    // Game Constants
+    const GRID_SIZE = 20; // 20x20 Grid
+    const TILE_SIZE = 1;  // Size of one grid tile in Three.js units
+    const INITIAL_LENGTH = 5;
+    const STARTING_POWER = 1;
+
+    // Persistent Data (Local Storage)
+    const LOCAL_STORAGE_KEY = 'pws_palwal_3d_data';
+    let localData = {
+        coins: 0,
+        maxPowerLevel: 1,
+        gameSpeedDelay: 150, // Default: 150ms delay
+        upgradeCost: 100,
+        headColor: 0x00FFAA,
+        bodyColor: 0x005A3B,
+    };
+
+    // Three.js elements
+    let scene, camera, renderer, controls;
+    const canvasContainer = document.getElementById('game-canvas-container');
+
+    // Game State
+    let isGameRunning = false;
+    let snakeBody = []; // Array of THREE.Mesh objects
+    let snakePath = []; // Array of {x, z} coordinates for movement
+    let snakeDirection = new THREE.Vector3(0, 0, -1); // Initial direction (negative Z)
+    let foodMesh; // THREE.Mesh for the food
+    let score = 0;
+    let coinsEarnedThisGame = 0;
+    let lastMoveTime = 0;
+    let currentSnakePower = STARTING_POWER; // Player's current power (based on length + MPL)
+
+    // --- Utility Functions ---
+
+    /**
+     * Loads persistent data from local storage.
+     */
+    function loadLocalData() {
+        const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (storedData) {
+            try {
+                // Merge loaded data with defaults
+                const parsedData = JSON.parse(storedData);
+                localData = { ...localData, ...parsedData };
+                
+                // Ensure colors are numbers for Three.js
+                if (typeof localData.headColor === 'string') {
+                    localData.headColor = parseInt(localData.headColor.replace('#', '0x'));
+                }
+                if (typeof localData.bodyColor === 'string') {
+                    localData.bodyColor = parseInt(localData.bodyColor.replace('#', '0x'));
+                }
+            } catch (e) {
+                console.error("Failed to parse local storage data:", e);
+            }
+        }
+    }
+
+    /**
+     * Saves the current localData to local storage.
+     */
+    function saveLocalData() {
+        try {
+            // Save colors as hex strings for storage consistency
+            const dataToSave = {
+                ...localData,
+                headColor: '#' + localData.headColor.toString(16).padStart(6, '0'),
+                bodyColor: '#' + localData.bodyColor.toString(16).padStart(6, '0'),
+            };
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
+        } catch (e) {
+            console.error("Error saving data to local storage:", e);
+        }
+    }
+
+    /**
+     * Updates all UI elements related to user stats and customization.
+     */
+    function updateUIStats() {
+        document.getElementById('coin-count').textContent = localData.coins;
+        document.getElementById('max-power-level').textContent = currentSnakePower;
+        document.getElementById('current-score').textContent = score;
+
+        // Customization Shop UI
+        const cost = 100 * Math.pow(localData.maxPowerLevel, 1.5);
+        localData.upgradeCost = Math.ceil(cost / 10) * 10;
+
+        document.getElementById('custom-mpl').textContent = localData.maxPowerLevel;
+        document.getElementById('upgrade-cost').textContent = localData.upgradeCost;
+        
+        // Speed Slider UI
+        const speedSlider = document.getElementById('speed-slider');
+        speedSlider.value = localData.gameSpeedDelay;
+        document.getElementById('speed-delay-value').textContent = `${localData.gameSpeedDelay}ms`;
+    }
+
+    // --- Three.js Scene Setup ---
+
+    function initThreeJS() {
+        // Scene
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a1428); // Dark space background
+
+        // Camera
+        camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+        
+        // Center the camera and look down at the grid
+        camera.position.set(0, 30, 0); // High position
+        camera.lookAt(0, 0, 0);
+
+        // Renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // Ensure only one canvas is present
+        while (canvasContainer.firstChild) {
+            canvasContainer.removeChild(canvasContainer.firstChild);
+        }
+        canvasContainer.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 4); // Soft white light
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        directionalLight.position.set(5, 10, 7.5); // Top-right position
+        scene.add(directionalLight);
+
+        // Grid Plane (The Game Board)
+        const gridHelper = new THREE.GridHelper(GRID_SIZE * TILE_SIZE, GRID_SIZE, 0x005A3B, 0x005A3B); // Dark green grid
+        scene.add(gridHelper);
+        
+        const planeGeometry = new THREE.PlaneGeometry(GRID_SIZE * TILE_SIZE, GRID_SIZE * TILE_SIZE);
+        const planeMaterial = new THREE.MeshLambertMaterial({ color: 0x08101f, side: THREE.DoubleSide });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = Math.PI / 2; // Rotate to lay flat
+        scene.add(plane);
+
+        // Orbit Controls (Allow user to move camera)
+        // FIX: Using THREE.OrbitControls since it's loaded as a global script via the CDN.
+        controls = new THREE.OrbitControls(camera, renderer.domElement); 
+        controls.target.set(0, 0, 0); // Focus on the center of the scene
+        controls.enableDamping = true; // Smooth movement
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 50;
+        controls.update();
+
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function onWindowResize() {
+        camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+    }
+    
+    // --- 3D Game Object Management ---
+
+    /**
+     * Converts grid coordinates (0 to 19) to Three.js world coordinates (-9.5 to 9.5).
+     */
+    function gridToWorld(x, z) {
+        return new THREE.Vector3(
+            (x - GRID_SIZE / 2 + 0.5) * TILE_SIZE, 
+            0, // Y is height/vertical axis in Three.js
+            (z - GRID_SIZE / 2 + 0.5) * TILE_SIZE 
+        );
+    }
+
+    /**
+     * Spawns the food pellet (a glowing sphere).
+     */
+    function spawnFood() {
+        if (foodMesh) {
+            scene.remove(foodMesh);
+            foodMesh.geometry.dispose();
+            foodMesh.material.dispose();
+        }
+
+        let newPos;
+        let collision;
+        do {
+            newPos = { 
+                x: Math.floor(Math.random() * GRID_SIZE), 
+                z: Math.floor(Math.random() * GRID_SIZE) 
+            };
+            collision = snakePath.some(segment => segment.x === newPos.x && segment.z === newPos.z);
+        } while (collision);
+
+        const worldPos = gridToWorld(newPos.x, newPos.z);
+
+        const foodGeometry = new THREE.SphereGeometry(TILE_SIZE * 0.4, 16, 16);
+        const foodMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc00, wireframe: false }); // Yellow/Gold
+        foodMesh = new THREE.Mesh(foodGeometry, foodMaterial);
+        
+        // Set height slightly above the plane
+        foodMesh.position.set(worldPos.x, TILE_SIZE * 0.5, worldPos.z); 
+        foodMesh.userData = { gridX: newPos.x, gridZ: newPos.z };
+        scene.add(foodMesh);
+    }
+
+    /**
+     * Creates and returns a new snake segment mesh.
+     */
+    function createSegment(color, isHead = false) {
+        const height = TILE_SIZE;
+        const radius = TILE_SIZE * 0.4;
+        const geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
+        
+        // Base Material (Lambert for lighting effects)
+        let material = new THREE.MeshLambertMaterial({ color: color });
+
+        // Head specific styling
+        if (isHead) {
+            material.emissive = new THREE.Color(0x00FFFF); // Subtle glow
+            material.emissiveIntensity = 0.2;
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        
+        // Cylinders are vertical by default, rotate them to lay flat
+        mesh.rotation.x = Math.PI / 2;
+        
+        return mesh;
+    }
+
+    /**
+     * Initializes the snake in the 3D world.
+     */
+    function initializeSnake() {
+        // Clear previous snake
+        snakeBody.forEach(mesh => scene.remove(mesh));
+        snakeBody = [];
+        snakePath = [];
+
+        // Start position (center of the grid)
+        const startX = Math.floor(GRID_SIZE / 2);
+        const startZ = Math.floor(GRID_SIZE / 2);
+
+        for (let i = 0; i < INITIAL_LENGTH; i++) {
+            const gridZ = startZ + i; // Start facing Z-
+            const worldPos = gridToWorld(startX, gridZ);
+            
+            // Create head/body segments
+            const isHead = i === 0;
+            const color = isHead ? localData.headColor : localData.bodyColor;
+            const segment = createSegment(color, isHead);
+            
+            // Set position slightly above the plane
+            segment.position.set(worldPos.x, TILE_SIZE * 0.5, worldPos.z);
+            segment.userData = { gridX: startX, gridZ: gridZ };
+
+            snakeBody.push(segment);
+            snakePath.push({ x: startX, z: gridZ });
+            scene.add(segment);
+        }
+    }
+    
+    // --- Game Logic ---
+
+    function updatePower() {
+        const mplBonus = localData.maxPowerLevel - 1;
+        const segmentPower = Math.floor(snakeBody.length / 5);
+        currentSnakePower = STARTING_POWER + segmentPower + mplBonus;
+        updateUIStats();
+    }
+
+    function changeDirection(newDir) {
+        // Check for 180 degree turn (moving opposite)
+        if (snakeDirection.dot(newDir) !== -1) {
+            snakeDirection.copy(newDir);
+        }
+    }
+
+    function moveSnake() {
+        const headData = snakeBody[0].userData;
+        let newX = headData.gridX + snakeDirection.x;
+        let newZ = headData.gridZ + snakeDirection.z;
+
+        // Wrap around boundaries
+        if (newX < 0) newX = GRID_SIZE - 1;
+        if (newX >= GRID_SIZE) newX = 0;
+        if (newZ < 0) newZ = GRID_SIZE - 1;
+        if (newZ >= GRID_SIZE) newZ = 0;
+
+        const newHeadPos = { x: newX, z: newZ };
+
+        // 1. Check Collision
+        if (checkSelfCollision(newHeadPos)) {
+            gameOver("Self-Collision! The 3D world is unforgiving.");
+            return;
+        }
+
+        // 2. Add New Head to Path
+        snakePath.unshift(newHeadPos);
+        
+        // 3. Check Food Consumption
+        const isFoodEaten = foodMesh && 
+                            newHeadPos.x === foodMesh.userData.gridX && 
+                            newHeadPos.z === foodMesh.userData.gridZ;
+        
+        if (isFoodEaten) {
+            score += 1;
+            coinsEarnedThisGame += 10;
+            updatePower(); // Update power and score display
+
+            // Add a new segment (it will take the place of the old tail position in the next step)
+            growSnake();
+            spawnFood();
+        } else {
+            // Remove Old Tail from Path
+            snakePath.pop();
+        }
+
+        // 4. Update 3D Mesh Positions (following the snakePath)
+        for (let i = 0; i < snakeBody.length; i++) {
+            const mesh = snakeBody[i];
+            const pathPos = snakePath[i];
+
+            // Update user data and 3D position
+            mesh.userData.gridX = pathPos.x;
+            mesh.userData.gridZ = pathPos.z;
+            const worldPos = gridToWorld(pathPos.x, pathPos.z);
+            mesh.position.set(worldPos.x, TILE_SIZE * 0.5, worldPos.z);
+            
+            // Optional: Rotate the head mesh based on direction for realism
+            if (i === 0) {
+                // Calculate rotation based on direction vector (only rotate around Y)
+                const angle = Math.atan2(snakeDirection.x, snakeDirection.z);
+                mesh.rotation.y = angle;
+                mesh.rotation.x = Math.PI / 2; // Keep it lying flat
+            }
+        }
+    }
+
+    function checkSelfCollision(newHeadPos) {
+        for (let i = 1; i < snakePath.length; i++) {
+            const segment = snakePath[i];
+            if (newHeadPos.x === segment.x && newHeadPos.z === segment.z) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function growSnake() {
+        // Create a new segment where the current tail is (or would be)
+        const pathPos = snakePath[snakePath.length - 1]; // Position before pop
+        const worldPos = gridToWorld(pathPos.x, pathPos.z);
+        
+        const newSegment = createSegment(localData.bodyColor);
+        newSegment.position.set(worldPos.x, TILE_SIZE * 0.5, worldPos.z);
+        newSegment.userData = { gridX: pathPos.x, gridZ: pathPos.z };
+        
+        snakeBody.push(newSegment);
+        scene.add(newSegment);
+    }
+    
+    // --- Game Flow and Loop ---
+    
+    function gameUpdate() {
+        if (!isGameRunning) return;
+
+        const now = performance.now();
+        if (now - lastMoveTime >= localData.gameSpeedDelay) {
+            lastMoveTime = now;
+            moveSnake();
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // This runs at the display's refresh rate (smooth rendering)
+        controls.update(); 
+        renderer.render(scene, camera);
+        
+        // This runs the game logic only when the speed timer allows it
+        gameUpdate(); 
+
+        // Make the food pulse/rotate for visibility
+        if (foodMesh) {
+            foodMesh.rotation.y += 0.05;
+        }
+    }
+
+    function startGame() {
+        if (isGameRunning) return;
+
+        initializeSnake();
+        spawnFood();
+
+        score = 0;
+        coinsEarnedThisGame = 0;
+        isGameRunning = true;
+        updatePower(); // Initialize power display
+
+        document.getElementById('btn-toggle-game').textContent = 'RESTART GAME';
+        document.getElementById('btn-toggle-game').classList.remove('bg-green-700', 'hover:bg-green-800');
+        document.getElementById('btn-toggle-game').classList.add('bg-orange-700', 'hover:bg-orange-800');
+
+        hideModal(gameOverModal);
+        lastMoveTime = performance.now(); // Reset timer
+    }
+
+    function gameOver(reason) {
+        isGameRunning = false;
+        
+        // Update persistent coins
+        localData.coins += coinsEarnedThisGame;
+        saveLocalData();
+        
+        // Show Game Over Modal
+        document.getElementById('final-score').textContent = score;
+        document.getElementById('coins-earned').textContent = coinsEarnedThisGame;
+        document.getElementById('game-over-reason').innerHTML = reason; 
+        showModal(gameOverModal);
+
+        document.getElementById('btn-toggle-game').textContent = 'START GAME';
+        document.getElementById('btn-toggle-game').classList.remove('bg-orange-700', 'hover:bg-orange-800');
+        document.getElementById('btn-toggle-game').classList.add('bg-green-700', 'hover:bg-green-800');
+    }
+
+    // --- UI/Modal Functions ---
+    
+    function showModal(modalElement) {
+        modalElement.classList.remove('hidden');
+        modalElement.style.display = 'flex'; 
+    }
+
+    function hideModal(modalElement) {
+        modalElement.classList.add('hidden');
+        modalElement.style.display = 'none'; 
+    }
+
+    function showNotification(message) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-[100]';
+        modal.innerHTML = `
+            <div class="modal-content-pws p-6 rounded-lg text-center w-full max-w-xs">
+                <p class="text-xl text-yellow-300 mb-6">${message}</p>
+                <button class="btn-pws bg-gray-600 hover:bg-gray-700">OK</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('button').onclick = () => document.body.removeChild(modal);
+    }
+    
+    // --- Event Listeners and Initialization ---
+
+    // Game Controls
+    document.addEventListener('keydown', (e) => {
+        if (!isGameRunning) return;
+
+        let newDir = null;
+
+        switch (e.key.toLowerCase()) {
+            case 'arrowup':
+            case 'w':
+                newDir = new THREE.Vector3(0, 0, -1); break;
+            case 'arrowdown':
+            case 's':
+                newDir = new THREE.Vector3(0, 0, 1); break;
+            case 'arrowleft':
+            case 'a':
+                newDir = new THREE.Vector3(-1, 0, 0); break;
+            case 'arrowright':
+            case 'd':
+                newDir = new THREE.Vector3(1, 0, 0); break;
+            default:
+                return;
+        }
+
+        if (newDir) {
+            changeDirection(newDir);
+        }
+        e.preventDefault(); 
+    });
+
+    // Toggle Game Button
+    document.getElementById('btn-toggle-game').addEventListener('click', startGame);
+    document.getElementById('btn-game-over-menu').addEventListener('click', startGame); 
+    
+    // Customization Modal Handlers
+    document.getElementById('btn-customize').addEventListener('click', () => {
+        updateUIStats();
+        showModal(customModal);
+    });
+    
+    // Close Customization and Save Speed
+    document.getElementById('btn-close-custom').addEventListener('click', () => {
+        // Speed is already saved on slider change, just update local data
+        localData.gameSpeedDelay = parseInt(document.getElementById('speed-slider').value);
+        saveLocalData();
+        hideModal(customModal);
+        updateUIStats();
+        showNotification(`Settings saved! New speed delay: ${localData.gameSpeedDelay}ms.`);
+    });
+    
+    // Speed Slider Input Listener
+    document.getElementById('speed-slider').addEventListener('input', (e) => {
+        localData.gameSpeedDelay = parseInt(e.target.value);
+        document.getElementById('speed-delay-value').textContent = `${localData.gameSpeedDelay}ms`;
+    });
+
+    // Upgrade Power Button
+    document.getElementById('btn-upgrade-power').addEventListener('click', () => {
+        if (localData.coins >= localData.upgradeCost) {
+            localData.coins -= localData.upgradeCost;
+            localData.maxPowerLevel += 1;
+            saveLocalData();
+            updatePower(); // Refresh current power immediately
+            updateUIStats();
+            showNotification(`Max Power Level upgraded to ${localData.maxPowerLevel}!`);
+        } else {
+            showNotification(`Not enough coins! You need ${localData.upgradeCost} coins to upgrade.`);
+        }
+    });
+
+    // --- Initial Setup ---
+    window.onload = () => {
+        loadLocalData(); 
+        initThreeJS(); 
+        updateUIStats();
+        animate(); // Start the 3D rendering loop immediately
+    };
+
+</script>
+</body>
+</html>
